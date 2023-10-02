@@ -167,6 +167,48 @@ class ClassificationUtility():
         self.trained_models = trained_models
         self.results = pd.DataFrame(results)
 
+    def trainCustomModel(self, model_name):
+        self.prepare_data()
+        self.get_preprocessor()
+        print("Status: Setting up Custom Model Training", file=sys.stderr)
+        classification_metrics = ClassificationMetrics
+        
+        results = []
+        trained_models = {}
+        model = getattr(sys.modules[__name__], model_name)()
+        self.get_estimator(model_name)
+        X = self.data.drop(self.target_column, axis=1)
+        y = self.data[self.target_column]
+        pbar.set_description("Status: %s Current Classifier: %s Processing" % ('Training', model_name))
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        self.estimator.fit(X_train, y_train)
+
+        trained_models[model_name] = self.estimator
+
+        y_pred = self.estimator.predict(X_test)
+        # print(y_pred)
+
+        accuracy = accuracy_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, average='macro')
+        recall = recall_score(y_test, y_pred, average='macro')
+        f1 = f1_score(y_test, y_pred, average='macro')
+        if len(self.le.classes_) == 2:
+            auc = roc_auc_score(y_test, self.estimator.predict_proba(X_test)[:, 1])
+        else:
+            auc = roc_auc_score(y_test, self.estimator.predict_proba(X_test), average='macro', multi_class='ovo')
+
+        results.append({
+            'classifier' : model_name,
+            classification_metrics.Accuracy.value : round(accuracy, 4),
+            classification_metrics.Precision.value : round(precision, 4),
+            classification_metrics.Recall.value : round(recall, 4),
+            classification_metrics.F1.value : round(f1, 4),
+            classification_metrics.AUC.value : round(auc, 4)
+        })
+        
+        self.trained_models = trained_models
+        self.results = pd.DataFrame(results)
+
     def getBestModel(self, metric):
         self.results.sort_values(by=metric, ascending=False, inplace=True)
         self.best_model = self.results.iloc[0]
